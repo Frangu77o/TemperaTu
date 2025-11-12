@@ -17,11 +17,15 @@
 LiquidCrystal lcd(RS, EN, D4, D5, D6, D7);
 
 // === Variabili di stato ===
-bool motoreAttivo = false;
-int numeroMatite = 0;
-unsigned long tempoUtilizzo = 0;
-unsigned long tempoInizioMotore = 0;
-bool ledState = false;
+struct Motore {
+  bool isActive;
+  int matiteTemperate;
+  unsigned long tempoInizio;
+  unsigned long tempoUtilizzo;
+};
+
+Motore motore = {false, 0, 0, 0};
+bool isLedActive = false;
 
 // === Scheduler e Tasks ===
 Scheduler runner;
@@ -45,28 +49,43 @@ void checkSensorCallback() {
   int statoSensore = digitalRead(SENSORE);
 
   // --- Caso: matita rimossa e motore attivo ---
-  if (statoSensore == HIGH && motoreAttivo) {
+  if (statoSensore == HIGH && motore.isActive) {
+    // Ferma il motore
     digitalWrite(MOTOR, LOW);
-    numeroMatite++;
+    motore.isActive = false;
 
-    // Aggiorna il display
-    lcd.setCursor(8, 0);
-    lcd.print("    ");
-    lcd.setCursor(8, 0);
-    lcd.print(numeroMatite);
-
+    // Mette il LED acceso fisso
     digitalWrite(LED, HIGH);
-    motoreAttivo = false;
+    isLedActive = true;
+
+    // Aggiorna il tempo di utilizzo e il display con l'intervallo finale
+    updateTimeCallback();
+
+    // Aggiorna il conteggio delle matite temperate
+    if(motore.matiteTemperate == 1000) {
+      motore.matiteTemperate++;
+      // Aggiorna il display
+      lcd.setCursor(8, 0);
+      lcd.print("+1K ");
+    } else if (motore.matiteTemperate < 1000) {
+      motore.matiteTemperate++;
+      // Aggiorna il display
+      lcd.setCursor(8, 0);
+      lcd.print(motore.matiteTemperate);
+    }
 
     // Disabilita tasks del motore
     blinkLedTask.disable();
     updateTimeTask.disable();
   }
   // --- Caso: matita presente ---
-  else if (statoSensore == LOW && !motoreAttivo) {
+  else if (statoSensore == LOW && !motore.isActive) {
+    // Avvia il motore
     digitalWrite(MOTOR, HIGH);
-    motoreAttivo = true;
-    tempoInizioMotore = millis();
+    motore.isActive = true;
+
+    // Inizializza il tempo di inizio
+    motore.tempoInizio = millis();
 
     // Abilita tasks del motore
     blinkLedTask.enable();
@@ -76,29 +95,35 @@ void checkSensorCallback() {
 
 // === Callback: lampeggio LED ===
 void blinkLedCallback() {
-  ledState = !ledState;
-  digitalWrite(LED, ledState ? HIGH : LOW);
+  isLedActive = !isLedActive;
+  digitalWrite(LED, isLedActive ? HIGH : LOW);
 }
 
 // === Callback: aggiornamento tempo ===
 void updateTimeCallback() {
-  if (motoreAttivo) {
-    tempoUtilizzo += (millis() - tempoInizioMotore);
-    tempoInizioMotore = millis();
-
-    String tempoFormattato = formatTime(tempoUtilizzo / 1000);
+  if (motore.isActive) {
+    motore.tempoUtilizzo += (millis() - motore.tempoInizio);
+    motore.tempoInizio = millis();
+    char* tempoFormattato = formatTime(motore.tempoUtilizzo / 1000);
     lcd.setCursor(7, 1);
     lcd.print(tempoFormattato);
   }
 }
 
 // === Funzione di formattazione tempo (mm:ss) ===
-String formatTime(unsigned long secondiTotali) {
-  int minuti = secondiTotali / 60;
-  int secondi = secondiTotali % 60;
-  char buffer[6];
-  sprintf(buffer, "%02d:%02d", minuti, secondi);
-  return String(buffer);
+char* formatTime(unsigned long secondiTotali) {
+  static char buffer[7];
+  unsigned long minuti = secondiTotali / 60;
+  unsigned long secondi = secondiTotali % 60;
+
+  // Se supera 1 ora (60 minuti) mostra +1h
+  if (minuti >= 60) {
+    strcpy(buffer, "+1h   ");
+  } else {
+    sprintf(buffer, "%02lu:%02lu", minuti, secondi);
+  }
+
+  return buffer;
 }
 
 // === Setup iniziale ===
@@ -110,6 +135,7 @@ void setup() {
   pinMode(LED, OUTPUT);
 
   digitalWrite(LED, HIGH);
+  isLedActive = true;
 
   lcd.begin(16, 2);
   lcd.print("Matite: 0");
