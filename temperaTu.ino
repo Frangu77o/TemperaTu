@@ -113,14 +113,14 @@ void updateTimeCallback() {
 // === Funzione di formattazione tempo (mm:ss) ===
 char* formatTime(unsigned long secondiTotali) {
   static char buffer[7];
+  unsigned int secondi = secondiTotali % 60;
   unsigned long minuti = secondiTotali / 60;
-  unsigned long secondi = secondiTotali % 60;
 
   // Se supera 1 ora (60 minuti) mostra +1h
   if (minuti >= 60) {
     strcpy(buffer, "+1h   ");
   } else {
-    sprintf(buffer, "%02lu:%02lu", minuti, secondi);
+    sprintf(buffer, "%02lu:%02u", minuti, secondi);
   }
 
   return buffer;
